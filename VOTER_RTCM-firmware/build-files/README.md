@@ -26,6 +26,19 @@ Added additional bytes (gps_buf[2] and [3]) to the TSIP debug to see Receiver mo
 
 Fixed the check of Supplemental Timing Packet 0xAC Minor Alarms, gps_buf bytes were swapped. Not critical, as we are checking for everything to be 0 (no alarms) anyways, but debugging makes more sense when we are looking at the right bits. gps_buf[12] is the low byte (Bits 0-7), and gps_buf[11] is the high byte (Bits 8-12).
 
+
+1.61 1/11/2021
+The mktime() sub-routine in MPLAB C30 has a bug, see https://www.microchip.com/forums/m653169.aspx
+
+After 12/31/2020 23:59:59, mktime() now returns -1, instead of epoch time. That BREAKS the firmware, as on boot, the 
+date/time starts counting from epoch, and nothing will syncrohize anymore, since all VOTER/RTCM's will have different 
+times once restarted. The main receiver will still receive, you just lose all voting.
+
+David Maciorowski, WA1JHK, wrote a patch to replace using mktime(). It takes the known value of epoch seconds up until 
+01/01/2021 00:00:00, and then uses the time/date from the GPS to add the offset to current time/date. Crude, but effective, 
+since we don't care about time in the past, only need to know the time now.
+
+
 2.00 12/19/2020
 This version drops the original squelch code (which actually had a bug in it), and makes "Chuck Squelch" the default squelch. As such, all binaries will have Chuck Squelch, there will be no binaries compiled with the original squelch (that code has been removed).
 

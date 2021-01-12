@@ -3,9 +3,10 @@
 *
 * Copyright (C) 2011-2015
 * Jim Dixon, WB6NIL <jim@lambdatel.com>
-* Copyright (C) 2016-2020
+* Copyright (C) 2016-2021
 * Chuck Henderson, WB9UUS <wb9uus@liandee.com>
 * Lee Woldanski, VE7FET <ve7fet@tparc.org>
+* David Maciorowski, WA1JHK
 *
 * This file is part of the VOTER System Project 
 *
@@ -23,6 +24,11 @@
 *   along with this project.  If not, see <http://www.gnu.org/licenses/>.
 *
 *   NOTE: Now works with latest (v3.30) MPLAB C30 compiler
+*
+*   ****mktime() is broken in MPLAB C30 for dates past 12/31/2020 23:59:59***
+*   This version now uses an alternate routine in substitution for mktime(). 
+*   All previous versions that use mktime() WILL be broken, not able to tell 
+*   the current time. See https://www.microchip.com/forums/m653169.aspx
 */
 
 /***********************************************************
@@ -2511,6 +2517,47 @@ static char *logtime_p(VTIME *p)
 	return(str);
 }
 
+
+/*****************************************************************************/
+//									     //
+//		Process GPS Subroutine					     //
+//									     //
+/*****************************************************************************/
+// 01/06/21 WA1JHK patch to replace broken mktime() in MPLAB C30
+static DWORD getSecondsSinceEpoch (struct tm *tm)
+{
+    #define SECONDS_EPOCH_TO_1121 1609459200  // seconds 1/1/1970 until 1/1/2021 0:0:0
+    #define SECONDS_PER_DAY 86400             // 60 * 60 * 24
+    #define SECONDS_PER_YEAR 31536000         // SECONDS_PER_DAY * 365
+
+    DWORD   total_seconds;
+    
+    // days before current month in current year
+    static ROM int normal_year[] = {0,31,59,90,120,151,181,212,243,273,304,334};
+    
+
+    // SECONDS_EPOCH_TO_1121 is seconds from 1/1/70 0:0:0 up to 1/1/21 0:0:0
+    total_seconds = SECONDS_EPOCH_TO_1121;
+    // seconds elapsed current day since midnight
+    total_seconds = total_seconds + ((DWORD)tm->tm_sec + ((DWORD)tm->tm_min * 60) + ((DWORD)tm->tm_hour * 3600));
+    // seconds elapsed since 1st of month up to current day
+    total_seconds = total_seconds + (((DWORD)tm->tm_mday - 1) * SECONDS_PER_DAY);
+    // seconds elapsed since 1st of year up to current month
+    total_seconds = total_seconds + (normal_year[tm->tm_mon - 1] * SECONDS_PER_DAY);
+    // seconds elapsed since 1st of year up to current month
+    total_seconds = total_seconds + ((tm->tm_year - 21) * SECONDS_PER_YEAR);
+    // seconds for leap day added for March thru December in leap year
+    if (((tm->tm_year % 4) == 0) & (tm->tm_mon > 2))
+    {
+        total_seconds = total_seconds + SECONDS_PER_DAY;
+    }
+    // seconds for extra leap days for all past years
+    total_seconds = total_seconds + (((tm->tm_year - 21) / 4) * SECONDS_PER_DAY);
+
+    return  (total_seconds);
+}
+
+
 /*****************************************************************************/
 //									     //
 //		Process GPS Subroutine					     //
@@ -2619,23 +2666,26 @@ void process_gps(void)
 				ggps_unavail = 0;
 			}
 #endif
+			// Example NMEA GPS String
+			// $GPRMC,194013.00,A,4032.94888,N,10511.83890,W,0.005,,020121,,,D*62
+			//        hhmmss                                        ddmmyy
+			// Use tm to pass binary time to getSecondsSinceEpoch
 			memset(&tm,0,sizeof(tm));
 			tm.tm_sec = twoascii(strs[1] + 4);
 			tm.tm_min = twoascii(strs[1] + 2);
 			tm.tm_hour = twoascii(strs[1]);
 			tm.tm_mday = twoascii(strs[9]);
-	
-			if (AppConfig.DebugLevel & 128)
-				tm.tm_mon = twoascii(strs[9] + 2);
+
+			if (AppConfig.DebugLevel & 128) // this can probably be removed now
+				tm.tm_mon = twoascii(strs[9] + 2); // add 1 month, some GPS are broken?
 			else
-				tm.tm_mon = twoascii(strs[9] + 2) - 1;
-			tm.tm_year = twoascii(strs[9] + 4) + 100;
-	
+				tm.tm_mon = twoascii(strs[9] + 2); // no lonfer need to -1, not using mktime()
+			tm.tm_year = twoascii(strs[9] + 4); // don't need to be relative to 1900, not using mktime()
 			if (AppConfig.DebugLevel & 64)
-				gps_time = (DWORD) mktime(&tm) + 1 + (DWORD) AppConfig.GPSOffset;
+				gps_time = (DWORD) getSecondsSinceEpoch(&tm) + 1 + (DWORD) AppConfig.GPSOffset; // Fix for GPS one second off
 			else
-				gps_time = (DWORD) mktime(&tm) + (DWORD) AppConfig.GPSOffset;
-	
+				gps_time = (DWORD) getSecondsSinceEpoch(&tm) + (DWORD) AppConfig.GPSOffset;
+
 			if (AppConfig.DebugLevel & 32)
 				printf("GPS-DEBUG: mon: %d, gps_time: %ld, ctime: %s\n",tm.tm_mon,gps_time,ctime((time_t *)&gps_time));
 	
@@ -2723,20 +2773,20 @@ void process_gps(void)
 			tm.tm_hour = gps_buf[13]; // hours 0-23
 			tm.tm_mday = gps_buf[14]; // day of month 1-31
 
-			/* gps_buf[15] is Month of Year, 1-12, HOWEVER, tm_mon counts 0-11!! */
-			if (AppConfig.DebugLevel & 128)
+			/* gps_buf[15] is Month of Year, 1-12 */
+			if (AppConfig.DebugLevel & 128) // this probably can be removed
 				tm.tm_mon = gps_buf[15]; // add 1 month, some GPS are broken?
 			else
-				tm.tm_mon = gps_buf[15] - 1; // tm_mon counts 0-11, so -1 to get correct month
+				tm.tm_mon = gps_buf[15]; // no longer need to -1 as we are not using mktime() 
 
 			w = gps_buf[17] | ((WORD)gps_buf[16] << 8); // 4-digit year (two bytes)
-			tm.tm_year = w - 1900; // tm_year is relative to years since 1900
+			tm.tm_year = w - 2000; // tm_year is now relative to years since 2000 (not using mktime())
 
 			gpsweek = gps_buf[7] | ((WORD)gps_buf[6] << 8); // gps week number (two bytes)
 
 			if (!AppConfig.GPSTbolt) // if this isn't a Tbolt device, don't fudge the time
 			{
-				gps_time = (DWORD) mktime(&tm) + (DWORD) AppConfig.GPSOffset;
+				gps_time = (DWORD) getSecondsSinceEpoch(&tm) + (DWORD) AppConfig.GPSOffset;
 			}
 			else
 			{
@@ -2744,17 +2794,17 @@ void process_gps(void)
 			it thinks it is, and correct it.*/
 				if ((gpsweek >= 0) && (gpsweek <= 935)) // for weeks 0-935, add 1024 weeks
 				{
-					gps_time = (DWORD) mktime(&tm) + (DWORD) ADD_1024_WEEKS + (DWORD) AppConfig.GPSOffset;
+					gps_time = (DWORD) getSecondsSinceEpoch(&tm) + (DWORD) ADD_1024_WEEKS + (DWORD) AppConfig.GPSOffset;
 				}
 
 				if ((gpsweek >= 936) && (gpsweek <= 1023)) // for weeks 936-1023, add 2048 weeks
 				{
-					gps_time = (DWORD) mktime(&tm) + (2 * (DWORD) ADD_1024_WEEKS) + (DWORD) AppConfig.GPSOffset;
+					gps_time = (DWORD) getSecondsSinceEpoch(&tm) + (2 * (DWORD) ADD_1024_WEEKS) + (DWORD) AppConfig.GPSOffset;
 				}
 
 				if (gpsweek >= 1024) // this isn't a Tbolt, so don't fudge the time
 				{
-					gps_time = (DWORD) mktime(&tm) + (DWORD) AppConfig.GPSOffset;
+					gps_time = (DWORD) getSecondsSinceEpoch(&tm) + (DWORD) AppConfig.GPSOffset;
 				}
 			}
 
