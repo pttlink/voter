@@ -2520,7 +2520,7 @@ static char *logtime_p(VTIME *p)
 
 /*****************************************************************************/
 //									     //
-//		Process GPS Subroutine					     //
+//		Calculate epoch Subroutine (mktime() replacement)	     //
 //									     //
 /*****************************************************************************/
 // 01/06/21 WA1JHK patch to replace broken mktime() in MPLAB C30
