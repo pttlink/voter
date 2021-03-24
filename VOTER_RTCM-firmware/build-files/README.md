@@ -51,3 +51,14 @@ This version reverses the logic for ToS/DSCP marking of packets. Now, by default
 Add another GPS debug feature to help determine PPS polarity. GPS debug will now report if you have PPS configured (set to 0 or 1), but it doesn't see detect a PPS pulse. This is likely because you are using the wrong polarity. Also added entry to 98-status menu to show if the PPS is bad (and suggest checking polarity). If PPS is set to ignore, the status menu will show 0 anyways, since it is not used.
 
 Add another menu config option (82) to allow you to add an arbitrary number of seconds to this device's GPS time, in order to synchronize with the master. Different brands have different firmware bugs, and may not always come up with the right rime. This makes it easier to line those times up, as long as it is a consistent offset. ie. if you need to add 19.4 years, that would be 19.4 * 365 * 24 * 60 * 60 = 611798400 seconds. This is similar to the change proposed by Chuck Henderson (WB9UUS), except that it adds it to the main menu, and allows for an arbitrary amount of time, up to 25 years.
+
+3.00 3/24/2021
+This is another major release, as it introduces the ability to remotely adjust the squelch of the VOTER/RTCM.
+
+By default (originially), the Squelch Pot (R22) just sets a voltage on an ADC line of the PIC. Based on the ADC value read, the setting of the squelch is determined.
+
+It is often desired to be able to remotely tune the squelch of the receiver, without having to drive to the radio site to "diddle the pot", and as it turns out, this is relatively trivial to do in software, by directly setting the value that would normally read from the ADC.
+
+In addition, there is a "squelch tunable" in the firmware, called "hysteresis", that will be brought out so it can be adjusted without having to recompile the firmware. By default, this has always been set to "24", unless you specifically changed it, and compiled your own firmware.
+
+Therefore, this version adds a new (S)quelch menu, that lets you adjust the squelch level and hysteresis remotely.
