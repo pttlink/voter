@@ -39,7 +39,7 @@ David Maciorowski, WA1JHK, wrote a patch to replace using mktime(). It takes the
 since we don't care about time in the past, only need to know the time now.
 
 
-2.00 12/19/2020
+2.00 3/24/2021
 This version drops the original squelch code (which actually had a bug in it), and makes "Chuck Squelch" the default squelch. As such, all binaries will have Chuck Squelch, there will be no binaries compiled with the original squelch (that code has been removed).
 
 Add some comments to the source, trying to figure out what some parts do. Looks like the un-documented "Saywer" mode forces the PL filter OUT of the receive audio path, when in OFFLINE mode, if enabled (Sawyer=1).
